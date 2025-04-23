@@ -5,13 +5,16 @@ mod bulk_rename;
 mod dir_size;
 
 use clap::{Parser, Subcommand};
+use colored::*;
+use std::io::{self, Write};
+use shlex;
 
 #[derive(Parser)]
 #[command(name = "toolbox")]
 #[command(about = "A multi-tool CLI utility written in Rust", long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -35,7 +38,7 @@ enum Commands {
     /// Manage a todo list
     Todo {
         #[command(subcommand)]
-        action: TodoAction,
+        action: todo::TodoAction,
     },
     /// Bulk rename files
     BulkRename {
@@ -53,43 +56,66 @@ enum Commands {
         #[arg(short, long, default_value_t = 10)]
         top: usize,
     },
-}
-
-#[derive(Subcommand)]
-enum TodoAction {
-    /// Add a new todo item
-    Add {
-        text: String,
-    },
-    /// List all todo items
-    List,
-    /// Mark a todo item as done
-    Done {
-        id: usize,
-    },
-    /// Remove a todo item
-    Remove {
-        id: usize,
-    },
+    /// Interactive mode
+    Interactive,
 }
 
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Organize { dir, mode } => {
+        Some(Commands::Organize { dir, mode }) => {
             organize::run(&dir, &mode);
         }
-        Commands::GitHelper { repo, clean_branches, summary } => {
+        Some(Commands::GitHelper { repo, clean_branches, summary }) => {
             git_helper::run(&repo, clean_branches, summary);
         }
-        Commands::Todo { action } => {
+        Some(Commands::Todo { action }) => {
             todo::run(action);
         }
-        Commands::BulkRename { dir, pattern, replace } => {
+        Some(Commands::BulkRename { dir, pattern, replace }) => {
             bulk_rename::run(&dir, &pattern, &replace);
         }
-        Commands::DirSize { dir, top } => {
+        Some(Commands::DirSize { dir, top }) => {
             dir_size::run(&dir, top);
         }
+        Some(Commands::Interactive) | None => {
+            println!("{}", "Toolbox Interactive Mode".bold().cyan());
+            println!("Type a command (or 'help', 'exit'):");
+            interactive_shell();
+        }
     }
+}
+
+fn interactive_shell() {
+    let mut input = String::new();
+    loop {
+        print!("{} ", "toolbox>".green().bold());
+        io::stdout().flush().unwrap();
+        input.clear();
+        if io::stdin().read_line(&mut input).is_err() {
+            println!("{}", "Failed to read input".red());
+            continue;
+        }
+        let trimmed = input.trim();
+        if trimmed == "exit" || trimmed == "quit" { break; }
+        if trimmed == "help" {
+            println!("Available commands: organize, git-helper, todo, bulk-rename, dir-size, exit");
+            continue;
+        }
+        let args = shlex::split(trimmed).unwrap_or_default();
+        let mut full_args = vec!["toolbox".to_string()];
+        full_args.extend(args);
+        match Cli::try_parse_from(&full_args) {
+            Ok(cli) => match cli.command {
+                Some(Commands::Organize { dir, mode }) => organize::run(&dir, &mode),
+                Some(Commands::GitHelper { repo, clean_branches, summary }) => git_helper::run(&repo, clean_branches, summary),
+                Some(Commands::Todo { action }) => todo::run(action),
+                Some(Commands::BulkRename { dir, pattern, replace }) => bulk_rename::run(&dir, &pattern, &replace),
+                Some(Commands::DirSize { dir, top }) => dir_size::run(&dir, top),
+                Some(Commands::Interactive) | None => {},
+            },
+            Err(e) => println!("{}", format!("Error: {}", e).red()),
+        }
+    }
+    println!("{}", "Goodbye!".yellow());
 }
