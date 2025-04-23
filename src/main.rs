@@ -3,6 +3,7 @@ mod git_helper;
 mod todo;
 mod bulk_rename;
 mod dir_size;
+mod config;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -23,8 +24,8 @@ enum Commands {
     Organize {
         #[arg(short, long, default_value = ".")]
         dir: String,
-        #[arg(short, long, default_value = "type")]
-        mode: String, // type, date, custom
+        #[arg(short, long)]
+        mode: Option<String>, // type, date, custom
     },
     /// Git helper commands
     GitHelper {
@@ -61,9 +62,11 @@ enum Commands {
 }
 
 fn main() {
+    let config = config::ToolboxConfig::load();
     let cli = Cli::parse();
     match cli.command {
         Some(Commands::Organize { dir, mode }) => {
+            let mode = mode.or_else(|| config.organize.as_ref().and_then(|o| o.default_mode.clone())).unwrap_or("type".to_string());
             organize::run(&dir, &mode);
         }
         Some(Commands::GitHelper { repo, clean_branches, summary }) => {
@@ -81,12 +84,12 @@ fn main() {
         Some(Commands::Interactive) | None => {
             println!("{}", "Toolbox Interactive Mode".bold().cyan());
             println!("Type a command (or 'help', 'exit'):");
-            interactive_shell();
+            interactive_shell(&config);
         }
     }
 }
 
-fn interactive_shell() {
+fn interactive_shell(config: &config::ToolboxConfig) {
     let mut input = String::new();
     loop {
         print!("{} ", "toolbox>".green().bold());
@@ -107,7 +110,10 @@ fn interactive_shell() {
         full_args.extend(args);
         match Cli::try_parse_from(&full_args) {
             Ok(cli) => match cli.command {
-                Some(Commands::Organize { dir, mode }) => organize::run(&dir, &mode),
+                Some(Commands::Organize { dir, mode }) => {
+                    let mode = mode.or_else(|| config.organize.as_ref().and_then(|o| o.default_mode.clone())).unwrap_or("type".to_string());
+                    organize::run(&dir, &mode);
+                },
                 Some(Commands::GitHelper { repo, clean_branches, summary }) => git_helper::run(&repo, clean_branches, summary),
                 Some(Commands::Todo { action }) => todo::run(action),
                 Some(Commands::BulkRename { dir, pattern, replace }) => bulk_rename::run(&dir, &pattern, &replace),

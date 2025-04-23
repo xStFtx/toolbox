@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 use clap::Subcommand;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum Priority {
     Low,
     Medium,
